@@ -132,19 +132,27 @@ final class Store: ObservableObject {
     }
 
     /// Place a new element centred on the canvas, sized sensibly for it.
+    /// `configure` lets a tool preset fields before the element lands, so e.g. the QR
+    /// tool can be a real tool rather than a barcode you have to convert afterwards.
     @discardableResult
-    func addNew(_ type: ElementType) -> UUID {
-        let size: CGSize = switch type {
-        case .text: CGSize(width: 200, height: 60)
-        case .line: CGSize(width: 160, height: 0)
-        case .symbol: CGSize(width: 64, height: 64)
-        case .barcode: CGSize(width: 140, height: 50)
-        default: CGSize(width: 120, height: 90)
-        }
+    func addNew(_ type: ElementType, size explicitSize: CGSize? = nil,
+                configure: (inout Element) -> Void = { _ in }) -> UUID {
+        let size = explicitSize ?? {
+            switch type {
+            case .text: CGSize(width: 200, height: 60)
+            case .line: CGSize(width: 160, height: 0)
+            case .symbol: CGSize(width: 64, height: 64)
+            case .barcode: CGSize(width: 140, height: 50)
+            case .arrow: CGSize(width: 140, height: 70)
+            default: CGSize(width: 120, height: 90)
+            }
+        }()
         let rect = CGRect(x: (doc.canvas.w - size.width) / 2,
                           y: (doc.canvas.h - size.height) / 2,
                           width: size.width, height: size.height)
-        return add(Element.make(type, at: rect.integral))
+        var element = Element.make(type, at: rect.integral)
+        configure(&element)
+        return add(element)
     }
 
     func deleteSelected() {

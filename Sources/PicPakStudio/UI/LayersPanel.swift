@@ -15,60 +15,99 @@ struct LeftSidebar: View {
 
 // MARK: - Tools
 
+/// One button in the palette. Kept as data so the groups below read as a table of
+/// contents rather than a wall of near-identical button code.
+private struct Tool: Identifiable {
+    let id: String
+    let title: String
+    let symbol: String
+    let help: String
+    let run: (Store) -> Void
+}
+
+private struct ToolGroup: Identifiable {
+    let id: String
+    let tools: [Tool]
+}
+
+/// The palette, in three groups.
+///
+/// Nine undifferentiated buttons in a row read as a wall; grouping by what the tool
+/// *produces* gives the eye somewhere to rest. QR is its own button rather than a
+/// setting hidden inside the barcode inspector — a tool nobody can find isn't a tool.
 struct ToolStrip: View {
     @EnvironmentObject var store: Store
 
-    private let tools: [ElementType] = [.rect, .ellipse, .triangle, .star, .line, .text, .symbol, .barcode]
-    private let columns = [GridItem(.adaptive(minimum: 42, maximum: 60), spacing: 6)]
+    private let columns = [GridItem(.adaptive(minimum: 44, maximum: 60), spacing: 6)]
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("ADD")
-                .font(.system(size: 10, weight: .semibold)).kerning(0.6)
-                .foregroundStyle(.secondary)
-
-            LazyVGrid(columns: columns, spacing: 6) {
-                ForEach(tools, id: \.self) { type in
-                    Button { store.addNew(type) } label: {
-                        VStack(spacing: 3) {
-                            Image(systemName: type.symbol).font(.system(size: 15))
-                            Text(shortLabel(type)).font(.system(size: 9))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 40)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Add \(type.label.lowercased())")
+    private var groups: [ToolGroup] {
+        [
+            ToolGroup(id: "Shapes", tools: [
+                Tool(id: "rect", title: "Rect", symbol: "rectangle", help: "Rectangle") { $0.addNew(.rect) },
+                Tool(id: "circle", title: "Circle", symbol: "circle", help: "Ellipse") { $0.addNew(.ellipse) },
+                Tool(id: "tri", title: "Tri", symbol: "triangle", help: "Triangle") { $0.addNew(.triangle) },
+                Tool(id: "poly", title: "Poly", symbol: "hexagon", help: "Polygon — set the number of sides in the inspector") { $0.addNew(.polygon) },
+                Tool(id: "star", title: "Star", symbol: "star", help: "Star") { $0.addNew(.star) },
+                Tool(id: "line", title: "Line", symbol: "line.diagonal", help: "Line") { $0.addNew(.line) },
+                Tool(id: "arrow", title: "Arrow", symbol: "arrowshape.right", help: "Arrow — rotate it to aim") { $0.addNew(.arrow) }
+            ]),
+            ToolGroup(id: "Content", tools: [
+                Tool(id: "text", title: "Text", symbol: "textformat", help: "Text") { $0.addNew(.text) },
+                Tool(id: "symbol", title: "Symbol", symbol: "star.circle", help: "SF Symbol") { $0.addNew(.symbol) },
+                Tool(id: "image", title: "Image", symbol: "photo", help: "Place a photo or bitmap") {
+                    FileActions.importArtwork(kind: .bitmap, into: $0)
+                },
+                Tool(id: "svg", title: "SVG", symbol: "point.topleft.down.to.point.bottomright.curvepath", help: "Place an SVG") {
+                    FileActions.importArtwork(kind: .svg, into: $0)
                 }
-                Button { FileActions.importArtwork(into: store) } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: "square.and.arrow.down").font(.system(size: 15))
-                        Text("Import").font(.system(size: 9))
+            ]),
+            ToolGroup(id: "Codes", tools: [
+                Tool(id: "barcode", title: "Barcode", symbol: "barcode", help: "Code 128 barcode") {
+                    $0.addNew(.barcode) { $0.barcodeKind = .code128 }
+                },
+                Tool(id: "qr", title: "QR", symbol: "qrcode", help: "QR code — put a URL or any text in it") {
+                    $0.addNew(.barcode, size: CGSize(width: 110, height: 110)) {
+                        $0.barcodeKind = .qr
+                        $0.barcodeValue = "https://example.com"
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 40)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
                 }
-                .buttonStyle(.plain)
-                .help("Place an SVG or image")
-            }
-        }
-        .padding(10)
+            ])
+        ]
     }
 
-    private func shortLabel(_ type: ElementType) -> String {
-        switch type {
-        case .rect: "Rect"
-        case .ellipse: "Circle"
-        case .triangle: "Tri"
-        case .star: "Star"
-        case .line: "Line"
-        case .text: "Text"
-        case .symbol: "Symbol"
-        case .barcode: "Code"
-        default: type.label
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(groups) { group in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(group.id.uppercased())
+                        .font(.system(size: 10, weight: .semibold)).kerning(0.6)
+                        .foregroundStyle(.secondary)
+                    LazyVGrid(columns: columns, spacing: 6) {
+                        ForEach(group.tools) { tool in
+                            button(tool)
+                        }
+                    }
+                }
+            }
         }
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+    }
+
+    private func button(_ tool: Tool) -> some View {
+        Button { tool.run(store) } label: {
+            VStack(spacing: 3) {
+                Image.safeSymbol(tool.symbol).font(.system(size: 15))
+                Text(tool.title).font(.system(size: 9))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help(tool.help)
     }
 }
 

@@ -74,8 +74,13 @@ layer-ordering and zoom maths are all exercised.
 
 ## What it does
 
-**Elements** — rectangle, ellipse, triangle, star, line, text, SF Symbol, SVG, bitmap image, barcode
-(Code 128 and QR). Every one of them paints in the four panel inks and nothing else.
+**Elements**, grouped in the palette by what they produce:
+
+- **Shapes** — rectangle, ellipse, triangle, polygon (3–14 sides), star, line, arrow
+- **Content** — text, SF Symbol, image, SVG
+- **Codes** — Code 128 barcode, QR
+
+Every one of them paints in the four panel inks and nothing else.
 
 **Layers** — a live-thumbnail list, front-to-back. Drag rows to restack them (a grip appears on
 hover; drag a multi-selection and the group keeps its own internal order), double-click to rename,

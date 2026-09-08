@@ -74,6 +74,10 @@ enum FileActions {
         AssetImporter.pickAny { asset in place(asset, into: store) }
     }
 
+    static func importArtwork(kind: Asset.Kind, into store: Store) {
+        AssetImporter.pick(kind: kind) { asset in place(asset, into: store) }
+    }
+
     // MARK: - Open
 
     static func open(into store: Store) {

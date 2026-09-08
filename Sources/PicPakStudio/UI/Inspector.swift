@@ -116,7 +116,7 @@ struct Inspector: View {
                          ? "\(store.selection.count) Selected"
                          : (first?.type.label ?? "Element")) {
             HStack(spacing: 6) {
-                Image(systemName: first?.type.symbol ?? "square")
+                Image.safeSymbol(first?.type.symbol ?? "square")
                     .foregroundStyle(.secondary)
                 TextField("Name", text: bind(\.name, "name", ""))
                     .textFieldStyle(.roundedBorder)
@@ -184,7 +184,7 @@ struct Inspector: View {
             PaintPicker(label: fillLabel, value: bind(\.fill, "fill", nil),
                         allowsNone: !showsFor([.text, .symbol, .barcode]),
                         onBegin: { store.begin() })
-            if showsFor([.rect, .ellipse, .triangle, .star, .line]) {
+            if showsFor([.rect, .ellipse, .triangle, .star, .polygon, .arrow, .line]) {
                 PaintPicker(label: "Stroke", value: bind(\.stroke, "stroke", nil),
                             onBegin: { store.begin() })
                 if first?.stroke != nil || (first?.strokeWidth ?? 0) > 0 {
@@ -196,11 +196,17 @@ struct Inspector: View {
                 SliderRow(label: "Corner radius", value: bind(\.cornerRadius, "cr", 0),
                           range: 0...80, format: "%.0f px", onBegin: { store.breakCoalescing() })
             }
-            if showsFor([.star]) {
-                SliderRow(label: "Points", value: Binding(
+            if showsFor([.star, .polygon]) {
+                SliderRow(label: showsFor([.polygon]) ? "Sides" : "Points", value: Binding(
                     get: { Double(first?.points ?? 5) },
                     set: { new in store.beginCoalesced("pts"); store.updateSelected { $0.points = Int(new.rounded()) } }),
                           range: 3...14, format: "%.0f")
+            }
+            if showsFor([.arrow]) {
+                SliderRow(label: "Head", value: bind(\.arrowHead, "head", 0.42),
+                          range: 0.1...0.9, format: "%.2f", onBegin: { store.breakCoalescing() })
+                SliderRow(label: "Shaft", value: bind(\.arrowThickness, "shaft", 0.38),
+                          range: 0.05...1, format: "%.2f", onBegin: { store.breakCoalescing() })
             }
         }
     }

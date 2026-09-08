@@ -50,6 +50,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first, FileActions.confirmDiscard(Store.shared) else { return }
         FileActions.open(url: url, into: Store.shared)
+        // SwiftUI opens a fresh WindowGroup window for a document handed to the app.
+        // There is one shared document here, so that would be two windows showing the
+        // same thing — keep the one the user already had, with its size and position.
+        DispatchQueue.main.async { Self.closeDuplicateEditorWindows() }
+    }
+
+    @MainActor
+    static func closeDuplicateEditorWindows() {
+        let editors = NSApp.windows.filter {
+            $0.identifier == WindowConfigurator.editorWindowID && $0.isVisible
+        }
+        guard editors.count > 1 else { return }
+        let keep = editors.first { $0.isMainWindow } ?? editors[0]
+        for window in editors where window !== keep { window.close() }
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)

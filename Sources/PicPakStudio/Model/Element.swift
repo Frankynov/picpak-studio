@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 
 enum ElementType: String, Codable, CaseIterable, Sendable {
-    case rect, ellipse, triangle, line, star, text, symbol, svg, image, barcode
+    case rect, ellipse, triangle, line, star, polygon, arrow, text, symbol, svg, image, barcode
 
     var label: String {
         switch self {
@@ -11,6 +11,8 @@ enum ElementType: String, Codable, CaseIterable, Sendable {
         case .triangle: "Triangle"
         case .line: "Line"
         case .star: "Star"
+        case .polygon: "Polygon"
+        case .arrow: "Arrow"
         case .text: "Text"
         case .symbol: "Symbol"
         case .svg: "SVG"
@@ -26,9 +28,11 @@ enum ElementType: String, Codable, CaseIterable, Sendable {
         case .triangle: "triangle"
         case .line: "line.diagonal"
         case .star: "star"
+        case .polygon: "hexagon"
+        case .arrow: "arrowshape.right"
         case .text: "textformat"
         case .symbol: "star.circle"
-        case .svg: "bezier.path"
+        case .svg: "point.topleft.down.to.point.bottomright.curvepath"
         case .image: "photo"
         case .barcode: "barcode"
         }
@@ -36,7 +40,7 @@ enum ElementType: String, Codable, CaseIterable, Sendable {
 
     var usesFill: Bool {
         switch self {
-        case .rect, .ellipse, .triangle, .star: true
+        case .rect, .ellipse, .triangle, .star, .polygon, .arrow: true
         default: false
         }
     }
@@ -65,7 +69,9 @@ struct Element: Identifiable, Codable, Equatable, Sendable {
     var stroke: PPColor? = nil
     var strokeWidth: Double = 0
     var cornerRadius: Double = 0
-    var points: Int = 5             // star points
+    var points: Int = 5             // star points, or polygon sides
+    var arrowHead: Double = 0.42    // head length as a fraction of the arrow's length
+    var arrowThickness: Double = 0.38 // shaft thickness as a fraction of the height
 
     // Text
     var text: String = "Text"
@@ -121,8 +127,9 @@ struct Element: Identifiable, Codable, Equatable, Sendable {
         var e = Element()
         e.type = type
         e.frame = rect
+        if type == .polygon { e.points = 6 }
         switch type {
-        case .rect, .ellipse, .triangle, .star:
+        case .rect, .ellipse, .triangle, .star, .polygon, .arrow:
             e.fill = .red
         case .line:
             e.fill = nil; e.stroke = .black; e.strokeWidth = 3
@@ -143,6 +150,7 @@ struct Element: Identifiable, Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, type, name, x, y, w, h, rotation, hidden, locked
         case fill, stroke, strokeWidth, cornerRadius, points
+        case arrowHead, arrowThickness
         case text, fontSize, fontWeight, fontDesign, fontFamily, align, vAlign
         case lineSpacing, tracking, strikethrough, strikeColor, autoFit, uppercase
         case symbolName, assetID, tint, dither, brightness, contrast
@@ -176,6 +184,8 @@ struct Element: Identifiable, Codable, Equatable, Sendable {
         strokeWidth = v(.strokeWidth, d.strokeWidth)
         cornerRadius = v(.cornerRadius, d.cornerRadius)
         points = v(.points, d.points)
+        arrowHead = v(.arrowHead, d.arrowHead)
+        arrowThickness = v(.arrowThickness, d.arrowThickness)
         text = v(.text, d.text)
         fontSize = v(.fontSize, d.fontSize)
         fontWeight = v(.fontWeight, d.fontWeight)
@@ -219,8 +229,11 @@ struct Element: Identifiable, Codable, Equatable, Sendable {
         try c.encode(cornerRadius, forKey: .cornerRadius)
 
         switch type {
-        case .star:
+        case .star, .polygon:
             try c.encode(points, forKey: .points)
+        case .arrow:
+            try c.encode(arrowHead, forKey: .arrowHead)
+            try c.encode(arrowThickness, forKey: .arrowThickness)
         case .text:
             try c.encode(text, forKey: .text)
             try c.encode(fontSize, forKey: .fontSize)

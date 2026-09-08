@@ -171,3 +171,31 @@ struct SegmentedIcons<T: Hashable>: View {
         }
     }
 }
+
+
+extension Image {
+    /// An SF Symbol that is guaranteed to draw something.
+    ///
+    /// `Image(systemName:)` renders an unknown name as empty space rather than
+    /// complaining, so a symbol that was renamed or is missing on this macOS version
+    /// silently produces a blank button. Availability is cached: resolving a name
+    /// costs an `NSImage` lookup, and these sit in view bodies.
+    static func safeSymbol(_ name: String, fallback: String = "questionmark.square.dashed") -> Image {
+        Image(systemName: SymbolAvailability.resolve(name, fallback: fallback))
+    }
+}
+
+enum SymbolAvailability {
+    nonisolated(unsafe) private static var known: [String: Bool] = [:]
+
+    static func exists(_ name: String) -> Bool {
+        if let hit = known[name] { return hit }
+        let found = NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil
+        known[name] = found
+        return found
+    }
+
+    static func resolve(_ name: String, fallback: String) -> String {
+        exists(name) ? name : fallback
+    }
+}

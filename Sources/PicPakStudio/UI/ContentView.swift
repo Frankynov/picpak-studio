@@ -167,10 +167,13 @@ struct ContentView: View {
 /// identifier changes between builds.
 struct WindowConfigurator: NSViewRepresentable {
     static let displayModeKey = "toolbar.displayMode"
+    /// Stamped so the delegate can tell editor windows apart from the Settings window.
+    static let editorWindowID = NSUserInterfaceItemIdentifier("picpak.editor")
 
     func makeNSView(context: Context) -> NSView {
         let probe = NSView(frame: .zero)
         DispatchQueue.main.async {
+            probe.window?.identifier = Self.editorWindowID
             guard let toolbar = probe.window?.toolbar else { return }
             toolbar.autosavesConfiguration = true
             if let stored = UserDefaults.standard.object(forKey: Self.displayModeKey) as? UInt,

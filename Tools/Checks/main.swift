@@ -241,6 +241,37 @@ func run() {
           TesseraeSettings.normalizedURL("http://tess.local:8766/")?.absoluteString == "http://tess.local:8766/")
     check("a hostless string is rejected", TesseraeSettings.normalizedURL("http://") == nil)
 
+    // Every symbol the UI names must actually exist, or it renders as a blank button.
+    var missingSymbols: [String] = []
+    for type in ElementType.allCases where !SymbolAvailability.exists(type.symbol) {
+        missingSymbols.append("\(type.rawValue) -> \(type.symbol)")
+    }
+    for name in ["doc.badge.plus", "folder", "square.and.arrow.down", "arrow.uturn.backward",
+                 "arrow.uturn.forward", "plus.magnifyingglass", "ruler", "eye.square",
+                 "square.and.arrow.up", "dot.radiowaves.up.forward", "magnifyingglass",
+                 "line.3.horizontal", "eye", "eye.slash", "lock.fill", "lock.open", "trash",
+                 "plus.square.on.square", "chevron.up", "chevron.down", "photo", "qrcode",
+                 "hexagon", "arrowshape.right", "point.topleft.down.to.point.bottomright.curvepath",
+                 "square.stack.3d.up.slash", "paperplane.fill", "checkmark.circle.fill",
+                 "exclamationmark.triangle.fill", "questionmark.square.dashed"]
+    where !SymbolAvailability.exists(name) {
+        missingSymbols.append(name)
+    }
+    check("every named SF Symbol exists on this system", missingSymbols.isEmpty,
+          missingSymbols.joined(separator: ", "))
+    check("a bogus symbol falls back rather than vanishing",
+          SymbolAvailability.resolve("definitely.not.a.symbol", fallback: "circle") == "circle")
+
+    // New shapes must produce a real path, not an empty one.
+    let box = CGRect(x: 0, y: 0, width: 100, height: 60)
+    check("polygon draws", !PolygonShape(sides: 6).path(in: box).isEmpty)
+    check("polygon clamps below 3 sides", !PolygonShape(sides: 1).path(in: box).isEmpty)
+    check("arrow draws", !ArrowShape().path(in: box).isEmpty)
+    check("arrow with a zero-size box stays empty", ArrowShape().path(in: .zero).isEmpty)
+    let wideHead = ArrowShape(head: 5, thickness: 5).path(in: box).boundingRect
+    check("arrow clamps silly proportions to its box",
+          wideHead.maxX <= box.maxX + 0.01 && wideHead.maxY <= box.maxY + 0.01, "\(wideHead)")
+
     // Barcodes actually generate.
     check("code128 renders", ImageFX.barcode(.code128, value: "5901234123457", color: .black, w: 200, h: 60) != nil)
     check("qr renders", ImageFX.barcode(.qr, value: "https://example.com", color: .red, w: 120, h: 120) != nil)

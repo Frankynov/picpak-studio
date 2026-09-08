@@ -74,6 +74,8 @@ struct ElementView: View, Equatable {
         case .ellipse:   shape(Ellipse())
         case .triangle:  shape(TriangleShape())
         case .star:      shape(StarShape(points: element.points))
+        case .polygon:   shape(PolygonShape(sides: element.points))
+        case .arrow:     shape(ArrowShape(head: element.arrowHead, thickness: element.arrowThickness))
         case .line:      lineView
         case .text:      textView
         case .symbol:    symbolView
@@ -217,6 +219,65 @@ struct TriangleShape: Shape, InsettableShape {
         p.move(to: CGPoint(x: r.midX, y: r.minY))
         p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
         p.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+        p.closeSubpath()
+        return p
+    }
+    func inset(by amount: CGFloat) -> some InsettableShape {
+        var copy = self; copy.inset += amount; return copy
+    }
+}
+
+/// A regular n-gon, flat-topped at 6 sides so hexagons sit the way people draw them.
+struct PolygonShape: Shape, InsettableShape {
+    var sides: Int = 6
+    var inset: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: inset, dy: inset)
+        let n = max(3, sides)
+        let centre = CGPoint(x: r.midX, y: r.midY)
+        let radius = min(r.width, r.height) / 2
+        // Point-up for odd counts, flat-top for even ones — both read as "upright".
+        let start = n.isMultiple(of: 2) ? -CGFloat.pi / 2 + .pi / CGFloat(n) : -CGFloat.pi / 2
+        var p = Path()
+        for i in 0..<n {
+            let angle = start + CGFloat(i) * 2 * .pi / CGFloat(n)
+            let point = CGPoint(x: centre.x + cos(angle) * radius, y: centre.y + sin(angle) * radius)
+            if i == 0 { p.move(to: point) } else { p.addLine(to: point) }
+        }
+        p.closeSubpath()
+        return p
+    }
+    func inset(by amount: CGFloat) -> some InsettableShape {
+        var copy = self; copy.inset += amount; return copy
+    }
+}
+
+/// Points right inside its box; rotate the element to aim it anywhere else.
+/// Filling the frame rather than joining two endpoints makes it behave like every
+/// other shape — drag the handles and it scales predictably.
+struct ArrowShape: Shape, InsettableShape {
+    var head: Double = 0.42        // head length, as a fraction of the width
+    var thickness: Double = 0.38   // shaft thickness, as a fraction of the height
+    var inset: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: inset, dy: inset)
+        guard r.width > 0, r.height > 0 else { return Path() }
+        let headWidth = min(max(head, 0.05), 0.95) * r.width
+        let shaft = min(max(thickness, 0.05), 1) * r.height
+        let shaftTop = r.midY - shaft / 2
+        let shaftBottom = r.midY + shaft / 2
+        let neck = r.maxX - headWidth
+
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: shaftTop))
+        p.addLine(to: CGPoint(x: neck, y: shaftTop))
+        p.addLine(to: CGPoint(x: neck, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.midY))
+        p.addLine(to: CGPoint(x: neck, y: r.maxY))
+        p.addLine(to: CGPoint(x: neck, y: shaftBottom))
+        p.addLine(to: CGPoint(x: r.minX, y: shaftBottom))
         p.closeSubpath()
         return p
     }
