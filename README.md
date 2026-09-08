@@ -5,12 +5,13 @@ Think MS Paint, but every pixel it produces is already legal on the panel.
 
 Built with SwiftUI, no dependencies, and no Xcode required to build it.
 
-![Split Sale template](docs/sample-salesplit.png)
+![PicPak Studio editing a poster](docs/screenshot.png)
 
 ## Install
 
 Grab `PicPak-Studio.zip` from the [latest release](../../releases/latest), unzip it, and drag
-**PicPak Studio.app** to `/Applications`.
+**PicPak Studio.app** to `/Applications`. It is a universal binary, so it runs natively on both
+Apple silicon and Intel Macs.
 
 The app is ad-hoc signed rather than notarised, so the first launch needs one extra step: **right-click
 the app and choose Open**, then confirm. Double-clicking it the normal way will just say it "cannot be
@@ -19,7 +20,7 @@ a sign anything is wrong. macOS remembers the choice after the first time.
 
 ## Requirements
 
-**To run the editor** — macOS 14 (Sonoma) or later, on Apple silicon. Nothing else. Drawing, export
+**To run the editor** — macOS 14 (Sonoma) or later, Apple silicon or Intel. Nothing else. Drawing, export
 and both file formats work entirely offline; there is no account and no network call.
 
 **To use Push to Panel** — a Tesserae server running and reachable
@@ -50,7 +51,18 @@ No Xcode needed — the Command Line Tools toolchain is enough.
 ./build.sh
 ```
 
-That produces `build/PicPak Studio.app`. Double-click it, or `open "build/PicPak Studio.app"`.
+That produces `build/PicPak Studio.app` as a universal binary — Apple silicon and Intel in one file.
+Double-click it, or `open "build/PicPak Studio.app"`.
+
+`swift build --arch arm64 --arch x86_64` would be the obvious way to do that, but it routes through
+xcbuild, which ships only with full Xcode. Building each slice with `--triple` and joining them with
+`lipo` needs nothing but the Command Line Tools.
+
+While working on the app, skip the second architecture:
+
+```bash
+./build.sh debug
+```
 
 ```bash
 ./check.sh
@@ -99,6 +111,11 @@ embedded, so a single file is the whole thing. Send one to a colleague and they 
 
 **PNG** — exported at exactly 400 × 300, every pixel byte-exactly one of the four inks. `@2x` and
 `@4x` are integer nearest-neighbour blow-ups, so a large PNG still shows the panel's real pixels.
+
+Here is the built-in *Split Sale* template exported at `@3x` — nothing in it is anything but black,
+white, red or yellow:
+
+![Split Sale template exported at 3x](docs/sample-salesplit.png)
 
 Exported PNGs are **non-destructive**: the project is compressed into a private `tEXt` chunk inside
 the file. Open that PNG back in PicPak Studio and every layer is still editable. Other software

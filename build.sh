@@ -1,20 +1,44 @@
 #!/bin/bash
 # Builds PicPak Studio and assembles a double-clickable .app bundle.
 # No Xcode required — just the Swift toolchain from the Command Line Tools.
+#
+#   ./build.sh            release, universal (Apple silicon + Intel)
+#   ./build.sh debug      debug, this machine's architecture only — much faster
+#
+# `swift build --arch arm64 --arch x86_64` would be the obvious way to get a
+# universal binary, but it routes through xcbuild, which ships only with full
+# Xcode. Building each slice with --triple and joining them with lipo needs
+# nothing but the Command Line Tools.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 CONFIG=${1:-release}
 APP="build/PicPak Studio.app"
 
-echo "▸ Compiling ($CONFIG)…"
-swift build -c "$CONFIG"
-BIN=$(swift build -c "$CONFIG" --show-bin-path)/PicPakStudio
+DEPLOYMENT=14.0
+ARM_TRIPLE="arm64-apple-macosx$DEPLOYMENT"
+INTEL_TRIPLE="x86_64-apple-macosx$DEPLOYMENT"
 
 echo "▸ Assembling bundle…"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/PicPak Studio"
+
+if [ "$CONFIG" = "debug" ]; then
+  echo "▸ Compiling (debug, native only)…"
+  swift build -c debug
+  cp "$(swift build -c debug --show-bin-path)/PicPakStudio" "$APP/Contents/MacOS/PicPak Studio"
+else
+  echo "▸ Compiling (release, Apple silicon)…"
+  swift build -c release --triple "$ARM_TRIPLE"
+  echo "▸ Compiling (release, Intel)…"
+  swift build -c release --triple "$INTEL_TRIPLE"
+
+  ARM_BIN="$(swift build -c release --triple "$ARM_TRIPLE" --show-bin-path)/PicPakStudio"
+  INTEL_BIN="$(swift build -c release --triple "$INTEL_TRIPLE" --show-bin-path)/PicPakStudio"
+
+  echo "▸ Joining into a universal binary…"
+  lipo -create "$ARM_BIN" "$INTEL_BIN" -output "$APP/Contents/MacOS/PicPak Studio"
+fi
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -74,3 +98,4 @@ codesign --force --deep --sign - "$APP" 2>/dev/null || echo "  (ad-hoc signing s
 touch "$APP"
 
 echo "▸ Done: $APP"
+lipo -archs "$APP/Contents/MacOS/PicPak Studio" | sed 's/^/  architectures: /' 
