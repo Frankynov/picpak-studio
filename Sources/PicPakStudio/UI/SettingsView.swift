@@ -6,13 +6,56 @@ import AppKit
 struct SettingsView: View {
     var body: some View {
         TabView {
-            TesseraeSettingsPane()
-                .tabItem { Label("Panels", systemImage: "dot.radiowaves.up.forward") }
+            GeneralSettingsPane()
+                .tabItem { Label("General", systemImage: "gearshape") }
             EditorSettingsPane()
                 .tabItem { Label("Editor", systemImage: "ruler") }
+            TesseraeSettingsPane()
+                .tabItem { Label("Panels", systemImage: "dot.radiowaves.up.forward") }
         }
         .frame(width: 460)
         .padding(.top, 6)
+    }
+}
+
+private struct GeneralSettingsPane: View {
+    @ObservedObject private var updates = UpdateChecker.shared
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Installed", value: updates.currentVersion)
+                Toggle("Check for updates automatically", isOn: $updates.checksAutomatically)
+                HStack(spacing: 8) {
+                    Button("Check Now") { Task { await updates.check(manual: true) } }
+                        .disabled(updates.state == .checking)
+                    switch updates.state {
+                    case .checking:
+                        ProgressView().controlSize(.small)
+                    case .upToDate:
+                        Label("Up to date", systemImage: "checkmark.circle.fill")
+                            .font(.caption).foregroundStyle(.green)
+                    case .failed(let message):
+                        Label(message, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption).foregroundStyle(PPColor.red.color).lineLimit(2)
+                    case .idle:
+                        EmptyView()
+                    }
+                    Spacer()
+                }
+            } header: {
+                Text("Version")
+            } footer: {
+                Text("Asks GitHub once a day whether a newer release exists, and tells you. "
+                     + "It never installs anything on its own. Turning this off means no "
+                     + "network request is made unless you press Check Now.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(height: 300)
     }
 }
 

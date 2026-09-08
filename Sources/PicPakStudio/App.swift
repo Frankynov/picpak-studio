@@ -78,6 +78,12 @@ struct AppCommands: Commands {
     @FocusedValue(\.showPush) private var showPush: Binding<Bool>?
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") {
+                Task { await UpdateChecker.shared.check(manual: true) }
+            }
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New from Template…") { showTemplates?.wrappedValue = true }
                 .keyboardShortcut("n")

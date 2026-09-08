@@ -272,6 +272,20 @@ func run() {
     check("arrow clamps silly proportions to its box",
           wideHead.maxX <= box.maxX + 0.01 && wideHead.maxY <= box.maxY + 0.01, "\(wideHead)")
 
+    // Version comparison decides whether an update is offered, so it has to be
+    // numeric — as text, "1.10" sorts before "1.9".
+    func v(_ s: String) -> AppVersion? { AppVersion(s) }
+    check("a leading v is ignored", v("v1.2") == v("1.2"))
+    check("1.10 is newer than 1.9", v("1.9")! < v("1.10")!)
+    check("1.2 is newer than 1.1", v("1.1")! < v("1.2")!)
+    check("2.0 is newer than 1.99", v("1.99")! < v("2.0")!)
+    check("equal versions are not newer", !(v("1.2")! < v("1.2")!))
+    check("missing components count as zero", v("1.2") == v("1.2.0"))
+    check("1.2.1 is newer than 1.2", v("1.2")! < v("1.2.1")!)
+    check("a pre-release suffix is ignored", v("1.3-beta.1") == v("1.3"))
+    check("nonsense is rejected", v("banana") == nil && v("") == nil && v("1.x") == nil)
+    check("the app's own version parses", v(AppInfo.version) != nil, AppInfo.version)
+
     // Barcodes actually generate.
     check("code128 renders", ImageFX.barcode(.code128, value: "5901234123457", color: .black, w: 200, h: 60) != nil)
     check("qr renders", ImageFX.barcode(.qr, value: "https://example.com", color: .red, w: 120, h: 120) != nil)

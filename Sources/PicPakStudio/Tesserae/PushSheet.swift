@@ -154,27 +154,38 @@ struct PushSheet: View {
         }
     }
 
+    /// Only ever flags what will *not* survive the trip. A panel that matches the
+    /// canvas in both size and gamut gets no decoration at all — the earlier red dot
+    /// meant "this one matches", which read as an alert on exactly the good panels.
     private func deviceRow(_ device: TesseraeDevice) -> some View {
-        let fits = device.w == Int(store.doc.canvas.w) && device.h == Int(store.doc.canvas.h)
+        let sizeMatches = device.w == Int(store.doc.canvas.w.rounded())
+            && device.h == Int(store.doc.canvas.h.rounded())
         return Toggle(isOn: Binding(
             get: { chosen.contains(device.id) },
             set: { on in if on { chosen.insert(device.id) } else { chosen.remove(device.id) } })) {
             HStack(spacing: 6) {
                 Text(device.name).font(.system(size: 11, weight: .medium))
                 Text(device.summary).font(.system(size: 10)).foregroundStyle(.secondary)
-                if !fits {
-                    Text("resized by server")
-                        .font(.system(size: 9))
-                        .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(Capsule().fill(PPColor.yellow.color))
-                        .foregroundStyle(.black)
+                if !sizeMatches {
+                    caution("rescaled to \(device.w)×\(device.h)")
                 }
-                if device.isFourColour {
-                    Circle().fill(PPColor.red.color).frame(width: 6, height: 6)
+                if !device.isFourColour {
+                    caution("colours flattened")
                 }
             }
         }
         .toggleStyle(.checkbox)
+        .help(sizeMatches && device.isFourColour
+              ? "Same size and inks as this canvas — it will arrive exactly as you see it."
+              : "This panel differs from the canvas, so Tesserae will convert the image for it.")
+    }
+
+    private func caution(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .medium))
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(Capsule().fill(PPColor.yellow.color))
+            .foregroundStyle(.black)
     }
 
     private var footer: some View {

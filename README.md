@@ -18,6 +18,18 @@ the app and choose Open**, then confirm. Double-clicking it the normal way will 
 opened", which is Gatekeeper's standard message for anything without a paid developer certificate — not
 a sign anything is wrong. macOS remembers the choice after the first time.
 
+## Updates
+
+**PicPak Studio ▸ Check for Updates…**, or automatically once a day. It asks GitHub whether a newer
+release exists and, if so, shows the notes with a link to the download — it never installs anything
+behind your back, and you can turn the automatic check off in **Settings ▸ General**, after which no
+network request is made unless you ask.
+
+Deliberately not Sparkle. Auto-installing would mean an EdDSA signing key to keep safe forever (lose
+it and existing installs can never update again) and an `appcast.xml` to regenerate and sign on every
+release — a lot of standing obligation for a tool this size, and the Gatekeeper prompt would remain
+regardless without a paid Developer ID.
+
 ## Requirements
 
 **To run the editor** — macOS 14 (Sonoma) or later, Apple silicon or Intel. Nothing else. Drawing, export

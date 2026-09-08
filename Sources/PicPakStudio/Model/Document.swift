@@ -143,5 +143,10 @@ enum DocumentError: LocalizedError {
 }
 
 enum AppInfo {
-    static let version = "1.0"
+    /// Read from the bundle rather than hardcoded, so it cannot drift from what
+    /// build.sh stamped into Info.plist — which is what the update check compares.
+    static let version: String =
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0"
+
+    static let repository = "Frankynov/picpak-studio"
 }

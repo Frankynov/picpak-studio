@@ -5,6 +5,7 @@ struct ContentView: View {
     @EnvironmentObject var store: Store
     @State private var showTemplates = false
     @State private var showPush = false
+    @ObservedObject private var updates = UpdateChecker.shared
 
     var body: some View {
         NavigationSplitView {
@@ -33,6 +34,12 @@ struct ContentView: View {
         .sheet(isPresented: $showPush) {
             PushSheet().environmentObject(store)
         }
+        .sheet(item: Binding(
+            get: { updates.available },
+            set: { if $0 == nil { updates.dismiss() } })) { release in
+            UpdateSheet(release: release)
+        }
+        .task { await updates.checkInBackground() }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers)
         }
