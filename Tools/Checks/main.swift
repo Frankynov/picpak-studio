@@ -230,6 +230,17 @@ func run() {
     check("content smaller than the viewport pins to the origin",
           clampedOrigin == .zero, "\(clampedOrigin)")
 
+    // A fresh install has no server configured; that has to be a quiet no-op, not a crash.
+    check("blank address yields no client", TesseraeSettings.normalizedURL("") == nil)
+    check("whitespace-only address yields no client", TesseraeSettings.normalizedURL("   ") == nil)
+    check("bare host:port gets a scheme",
+          TesseraeSettings.normalizedURL("192.168.1.5:8766")?.absoluteString == "http://192.168.1.5:8766/")
+    check("an explicit scheme is kept",
+          TesseraeSettings.normalizedURL("https://tess.local:8766")?.absoluteString == "https://tess.local:8766/")
+    check("a trailing slash isn't doubled",
+          TesseraeSettings.normalizedURL("http://tess.local:8766/")?.absoluteString == "http://tess.local:8766/")
+    check("a hostless string is rejected", TesseraeSettings.normalizedURL("http://") == nil)
+
     // Barcodes actually generate.
     check("code128 renders", ImageFX.barcode(.code128, value: "5901234123457", color: .black, w: 200, h: 60) != nil)
     check("qr renders", ImageFX.barcode(.qr, value: "https://example.com", color: .red, w: 120, h: 120) != nil)

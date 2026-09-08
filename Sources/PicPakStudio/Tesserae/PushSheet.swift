@@ -32,7 +32,10 @@ struct PushSheet: View {
             footer
         }
         .frame(width: 640)
-        .task { await connect() }
+        .task {
+            guard settings.isConfigured else { return }
+            await connect()
+        }
     }
 
     // MARK: - Pieces
@@ -77,13 +80,15 @@ struct PushSheet: View {
                 SettingsLink { Text("Settings…").font(.caption) }
                     .buttonStyle(.link)
             }
-            Text(settings.address)
+            Text(settings.address.isEmpty ? "No server set" : settings.address)
                 .font(.system(size: 11, design: .monospaced))
                 .lineLimit(1).truncationMode(.middle)
                 .foregroundStyle(.secondary)
             if !settings.isConfigured {
-                Text("Set the address and MCP token in Settings first.")
-                    .font(.caption).foregroundStyle(PPColor.red.color)
+                Text("Add your Tesserae address and MCP token in Settings to push.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 8) {
                 Button("Connect") { Task { await connect() } }

@@ -169,11 +169,18 @@ final class TesseraeSettings: ObservableObject {
     }
 
     var client: TesseraeClient? {
+        guard let url = Self.normalizedURL(address) else { return nil }
+        return TesseraeClient(base: url, token: token)
+    }
+
+    /// Turns whatever was typed into a base URL, or nil if there's nothing usable yet.
+    /// A blank address is the normal first-run state, not an error.
+    static func normalizedURL(_ address: String) -> URL? {
         var text = address.trimmingCharacters(in: .whitespaces)
-        if text.isEmpty { return nil }
+        guard !text.isEmpty else { return nil }
         if !text.contains("://") { text = "http://" + text }
         if !text.hasSuffix("/") { text += "/" }
-        guard let url = URL(string: text) else { return nil }
-        return TesseraeClient(base: url, token: token)
+        guard let url = URL(string: text), url.host?.isEmpty == false else { return nil }
+        return url
     }
 }

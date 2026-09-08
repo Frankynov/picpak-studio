@@ -17,7 +17,30 @@ the app and choose Open**, then confirm. Double-clicking it the normal way will 
 opened", which is Gatekeeper's standard message for anything without a paid developer certificate — not
 a sign anything is wrong. macOS remembers the choice after the first time.
 
-Requires macOS 14 or later, on Apple silicon.
+## Requirements
+
+**To run the editor** — macOS 14 (Sonoma) or later, on Apple silicon. Nothing else. Drawing, export
+and both file formats work entirely offline; there is no account and no network call.
+
+**To use Push to Panel** — a Tesserae server running and reachable
+from this Mac, at least one PicPak panel registered with it, and Tesserae's MCP token. Put the
+address and token into **Settings ▸ Panels** once.
+
+PicPak Studio speaks to Tesserae's HTTP API directly — `POST {address}/api/mcp/pages`, bearer auth.
+The `tesserae-mcp` bridge (the Python package that lets Claude drive Tesserae) is **not** required
+and is never invoked. If you already run it, though, the two values you need are exactly the
+environment variables it uses:
+
+| Tesserae MCP bridge | PicPak Studio |
+|---|---|
+| `TESSERAE_URL` | Settings ▸ Panels ▸ Address |
+| `TESSERAE_MCP_TOKEN` | Settings ▸ Panels ▸ MCP token |
+
+Without a server configured the Push button still opens; it simply says there's nothing to send to.
+Everything else in the app works as normal.
+
+**To build from source** — the Xcode Command Line Tools (Swift 6). No Xcode, and no package
+dependencies to fetch.
 
 ## Build it yourself
 

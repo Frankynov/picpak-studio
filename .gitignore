@@ -9,3 +9,6 @@ Resources/AppIcon.iconset/
 
 # macOS
 .DS_Store
+
+# Release artefacts are attached to GitHub releases, not committed
+dist/
