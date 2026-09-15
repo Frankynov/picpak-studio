@@ -7,8 +7,8 @@
 #
 # `swift build --arch arm64 --arch x86_64` would be the obvious way to get a
 # universal binary, but it routes through xcbuild, which ships only with full
-# Xcode. Building each slice with --triple and joining them with lipo needs
-# nothing but the Command Line Tools.
+# Xcode. Building each slice with --triple (in its own scratch folder) and joining
+# them with lipo needs nothing but the Command Line Tools.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -17,11 +17,9 @@ APP="build/PicPak Studio.app"
 
 # The single source of truth for the app's version. Bump it here when releasing,
 # and tag the release to match (v$APP_VERSION).
-APP_VERSION="1.2"
+APP_VERSION="1.3"
 
 DEPLOYMENT=14.0
-ARM_TRIPLE="arm64-apple-macosx$DEPLOYMENT"
-INTEL_TRIPLE="x86_64-apple-macosx$DEPLOYMENT"
 
 echo "▸ Assembling bundle…"
 rm -rf "$APP"
@@ -32,16 +30,23 @@ if [ "$CONFIG" = "debug" ]; then
   swift build -c debug
   cp "$(swift build -c debug --show-bin-path)/PicPakStudio" "$APP/Contents/MacOS/PicPak Studio"
 else
-  echo "▸ Compiling (release, Apple silicon)…"
-  swift build -c release --triple "$ARM_TRIPLE"
-  echo "▸ Compiling (release, Intel)…"
-  swift build -c release --triple "$INTEL_TRIPLE"
-
-  ARM_BIN="$(swift build -c release --triple "$ARM_TRIPLE" --show-bin-path)/PicPakStudio"
-  INTEL_BIN="$(swift build -c release --triple "$INTEL_TRIPLE" --show-bin-path)/PicPakStudio"
+  # One scratch folder per architecture. Swift 6.4's build system writes every
+  # --triple's product to the same path, so a shared folder would leave the second
+  # build overwriting the first — and lipo joining two copies of one architecture.
+  SLICES=()
+  for arch in arm64 x86_64; do
+    echo "▸ Compiling (release, $arch)…"
+    FOLDER=".build/universal-$arch"
+    swift build -c release --triple "$arch-apple-macosx$DEPLOYMENT" --scratch-path "$FOLDER"
+    SLICES+=("$(swift build -c release --triple "$arch-apple-macosx$DEPLOYMENT" --scratch-path "$FOLDER" --show-bin-path)/PicPakStudio")
+  done
 
   echo "▸ Joining into a universal binary…"
-  lipo -create "$ARM_BIN" "$INTEL_BIN" -output "$APP/Contents/MacOS/PicPak Studio"
+  lipo -create "${SLICES[@]}" -output "$APP/Contents/MacOS/PicPak Studio"
+
+  # Drop the debug map: it names every object file and source folder by its path on
+  # the machine that built it, which has no business inside a published download.
+  strip -S "$APP/Contents/MacOS/PicPak Studio"
 fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST

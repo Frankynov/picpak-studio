@@ -53,7 +53,8 @@ Without a server configured the Push button still opens; it simply says there's 
 Everything else in the app works as normal.
 
 **To build from source** — the Xcode Command Line Tools (Swift 6). No Xcode, and no package
-dependencies to fetch.
+dependencies to fetch. On the macOS 27 SDK, SwiftUI's `@State` became a macro whose plugin ships only
+with Xcode, so views here spell it `@ViewState` — a typealias for the same property wrapper.
 
 ## Build it yourself
 
@@ -110,8 +111,9 @@ colours and let them reduce to the gamut.
 **Bitmaps** — brightness and contrast, a white-background knockout for product shots, and three
 reduction modes: flat nearest-colour, Floyd–Steinberg diffusion, or an ordered halftone.
 
-**Canvas** — pixel rulers down the top and left edge, with the selection's extent shaded so you can
-read off exactly how far a shape reaches. Magnetic snapping to panel edges, centres and other
+**Canvas** — pixel rulers pinned along the top and left of the canvas area, like Preview's: they
+follow the artboard as you scroll and pinch instead of scrolling away with it, and shade the
+selection's extent so you can read off exactly how far a shape reaches. Magnetic snapping to panel edges, centres and other
 elements, when moving *and* when resizing: drag a rectangle's right edge toward the middle of the
 panel and it lands on 200 exactly. Plus a grid, a bezel margin, arrow-key nudging, marquee
 selection, rotation, align and distribute.
@@ -186,11 +188,18 @@ While dragging: **⇧** constrains to an axis or keeps aspect, **⌥** resizes f
 
 ### Zooming
 
-Pinch on a trackpad, or roll a mouse wheel, and the artboard zooms around whatever is under the
-pointer. A trackpad's plain two-finger scroll keeps *panning* — it only zooms with ⌘ held — because
-otherwise there'd be no way left to pan. A notched mouse wheel has nothing else to do, so it zooms
-on its own. The two are told apart by `NSEvent.hasPreciseScrollingDeltas`, which is false only for a
-real wheel.
+Zooming and scrolling behave like Preview and Safari, because they are the same machinery: the canvas
+is an `NSScrollView` with magnification turned on. Pinch on a trackpad and the artboard scales around
+your fingers, with momentum, rubber-banding at the zoom limits and at the edges, and a two-finger
+double-tap for smart zoom. Two-finger scrolling pans. A notched mouse wheel zooms around the pointer —
+it has nothing else to do — and ⌘-scroll zooms on a trackpad too.
+
+During a pinch AppKit scales what is already drawn, so nothing is laid out again and nothing can
+flash. When your fingers lift, the zoom is folded back in: the board re-renders crisp at the new scale
+and the scroll position moves in the same Core Animation transaction, so no frame shows the new size
+at the old position. That fold only lands exactly if the document is a pure scale of the artboard,
+which is why the margin around it is measured in panel pixels and the rulers sit outside the scroll
+view — a fixed margin would make the canvas snap whenever you pinch while scrolled to an edge.
 
 ## Layout
 

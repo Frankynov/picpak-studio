@@ -3,26 +3,37 @@ import AppKit
 
 struct ContentView: View {
     @EnvironmentObject var store: Store
-    @State private var showTemplates = false
-    @State private var showPush = false
+    @ViewState private var showTemplates = false
+    @ViewState private var showPush = false
+    @ViewState private var columns = NavigationSplitViewVisibility.all
     @ObservedObject private var updates = UpdateChecker.shared
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columns) {
+            // The system toggle sits wherever AppKit puts it after the window buttons; ours
+            // lines up with the sidebar's trailing edge.
             LeftSidebar()
+                .toolbar(removing: .sidebarToggle)
+                .modifier(TrailingSidebarButton(button: sidebarButton, shown: columns != .detailOnly))
         } detail: {
-            VStack(spacing: 0) {
-                CanvasEditor()
+            // The inspector sits under the toolbar, as in Pages or Keynote. As an `.inspector`
+            // column it ran up into the toolbar, and toolbar items straddled its edge.
+            HStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    CanvasEditor(store: store)
+                    Divider()
+                    StatusBar()
+                }
+                .clipped()
                 Divider()
-                StatusBar()
-            }
-            .inspector(isPresented: .constant(true)) {
                 Inspector()
-                    .inspectorColumnWidth(min: 250, ideal: 280, max: 340)
+                    .frame(width: 280)
+                    .clipped()
             }
         }
         .navigationTitle(store.windowTitle)
         .toolbar { toolbarContent }
+        .modifier(FlushToolbarBand())
         .sheet(isPresented: $showTemplates) {
             TemplateChooser { template in
                 if FileActions.confirmDiscard(store) {
@@ -57,6 +68,8 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
+            if columns == .detailOnly { sidebarButton }
+
             Button { showTemplates = true } label: {
                 Label("New", systemImage: "doc.badge.plus")
             }
@@ -149,6 +162,15 @@ struct ContentView: View {
         }
     }
 
+    private var sidebarButton: some View {
+        Button {
+            withAnimation { columns = columns == .detailOnly ? .all : .detailOnly }
+        } label: {
+            Label(columns == .detailOnly ? "Show Sidebar" : "Hide Sidebar", systemImage: "sidebar.left")
+        }
+        .help(columns == .detailOnly ? "Show the tools and layers" : "Hide the tools and layers")
+    }
+
     // MARK: - Drag and drop
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -168,10 +190,10 @@ struct ContentView: View {
     }
 }
 
-/// SwiftUI builds the window's `NSToolbar` but leaves autosaving off, so a switch to
-/// "Icon and Text" was forgotten at quit. This turns autosaving on and restores the
-/// mode we recorded ourselves, which survives even when the toolbar's generated
-/// identifier changes between builds.
+/// SwiftUI builds the window's `NSToolbar` without remembering its display mode, so a
+/// switch to "Icon and Text" was forgotten at quit. This restores the mode we record
+/// ourselves. Toolbar autosaving stays off: a saved item order outlives code changes and
+/// put items over the wrong column.
 struct WindowConfigurator: NSViewRepresentable {
     static let displayModeKey = "toolbar.displayMode"
     /// Stamped so the delegate can tell editor windows apart from the Settings window.
@@ -182,7 +204,6 @@ struct WindowConfigurator: NSViewRepresentable {
         DispatchQueue.main.async {
             probe.window?.identifier = Self.editorWindowID
             guard let toolbar = probe.window?.toolbar else { return }
-            toolbar.autosavesConfiguration = true
             if let stored = UserDefaults.standard.object(forKey: Self.displayModeKey) as? UInt,
                let mode = NSToolbar.DisplayMode(rawValue: stored) {
                 toolbar.displayMode = mode
@@ -298,5 +319,42 @@ extension FocusedValues {
     var showPush: Binding<Bool>? {
         get { self[PushFocusKey.self] }
         set { self[PushFocusKey.self] = newValue }
+    }
+}
+
+/// Without this the detail column's toolbar band starts a few points inside the sidebar
+/// gap while the canvas below it doesn't, so the column tops don't line up. macOS 14 draws
+/// the band flush already, and has no API for it.
+private struct FlushToolbarBand: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        } else {
+            content
+        }
+    }
+}
+
+/// Puts the sidebar button against the sidebar's trailing edge. The flexible toolbar spacer
+/// arrived in macOS 26; earlier systems keep the button beside the window buttons. While the
+/// sidebar is collapsed its items would pile into an overflow menu, so they're left out.
+private struct TrailingSidebarButton<Control: View>: ViewModifier {
+    let button: Control
+    let shown: Bool
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.toolbar {
+                if shown {
+                    ToolbarSpacer(.flexible)
+                    ToolbarItem(placement: .primaryAction) { button }
+                }
+            }
+        } else {
+            content.toolbar {
+                if shown {
+                    ToolbarItem(placement: .primaryAction) { button }
+                }
+            }
+        }
     }
 }

@@ -5,10 +5,10 @@ struct PushSheet: View {
     @StateObject private var settings = TesseraeSettings.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var devices: [TesseraeDevice] = []
-    @State private var chosen: Set<String> = []
-    @State private var status: Status = .idle
-    @State private var log: String = ""
+    @ViewState private var devices: [TesseraeDevice] = []
+    @ViewState private var chosen: Set<String> = []
+    @ViewState private var status: Status = .idle
+    @ViewState private var log: String = ""
 
     private enum Status: Equatable {
         case idle, connecting, ready, pushing, done(String), failed(String)
@@ -31,7 +31,7 @@ struct PushSheet: View {
             Divider()
             footer
         }
-        .frame(width: 640)
+        .frame(width: 680)
         .task {
             guard settings.isConfigured else { return }
             await connect()
@@ -143,49 +143,69 @@ struct PushSheet: View {
                     .frame(height: 100, alignment: .top)
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(devices) { device in
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(devices.enumerated()), id: \.element.id) { index, device in
+                            if index > 0 { Divider() }
                             deviceRow(device)
                         }
                     }
                 }
-                .frame(height: 132)
+                .frame(height: min(CGFloat(devices.count) * 40, 200))
             }
         }
     }
 
-    /// Only ever flags what will *not* survive the trip. A panel that matches the
-    /// canvas in both size and gamut gets no decoration at all — the earlier red dot
-    /// meant "this one matches", which read as an alert on exactly the good panels.
+    /// Two lines per panel — its name, then size and inks — with any warnings pinned to
+    /// the right at a fixed size. A long description truncates instead of wrapping into
+    /// the badges, so every row is the same height whatever the server calls the panel.
+    ///
+    /// Badges only flag what will *not* survive the trip; a panel matching the canvas in
+    /// both size and inks gets no decoration at all.
     private func deviceRow(_ device: TesseraeDevice) -> some View {
-        let sizeMatches = device.w == Int(store.doc.canvas.w.rounded())
-            && device.h == Int(store.doc.canvas.h.rounded())
+        let canvas = store.doc.canvas
+        let sizeMatches = device.w == Int(canvas.w.rounded()) && device.h == Int(canvas.h.rounded())
         return Toggle(isOn: Binding(
             get: { chosen.contains(device.id) },
             set: { on in if on { chosen.insert(device.id) } else { chosen.remove(device.id) } })) {
-            HStack(spacing: 6) {
-                Text(device.name).font(.system(size: 11, weight: .medium))
-                Text(device.summary).font(.system(size: 10)).foregroundStyle(.secondary)
-                if !sizeMatches {
-                    caution("rescaled to \(device.w)×\(device.h)")
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(device.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                    Text(device.summary)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
-                if !device.isFourColour {
-                    caution("colours flattened")
+                Spacer(minLength: 8)
+                HStack(spacing: 4) {
+                    if !sizeMatches {
+                        caution("Rescaled",
+                                help: "Tesserae will fit this \(Int(canvas.w))×\(Int(canvas.h)) poster to the panel's \(device.w)×\(device.h).")
+                    }
+                    if !device.isFourColour {
+                        caution("Loses colour",
+                                help: "This panel shows greys only, so red and yellow will come out as shades of grey.")
+                    }
                 }
+                .fixedSize()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .toggleStyle(.checkbox)
-        .help(sizeMatches && device.isFourColour
-              ? "Same size and inks as this canvas — it will arrive exactly as you see it."
-              : "This panel differs from the canvas, so Tesserae will convert the image for it.")
+        .padding(.vertical, 5)
     }
 
-    private func caution(_ text: String) -> some View {
+    private func caution(_ text: String, help: String) -> some View {
         Text(text)
             .font(.system(size: 9, weight: .medium))
-            .padding(.horizontal, 5).padding(.vertical, 1)
+            .lineLimit(1)
+            .padding(.horizontal, 6).padding(.vertical, 2)
             .background(Capsule().fill(PPColor.yellow.color))
             .foregroundStyle(.black)
+            .help(help)
     }
 
     private var footer: some View {

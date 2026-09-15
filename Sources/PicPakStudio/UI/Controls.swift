@@ -64,7 +64,7 @@ struct NumberField: View {
     var suffix: String = ""
     var onBegin: () -> Void = {}
 
-    @State private var text: String = ""
+    @ViewState private var text: String = ""
     @FocusState private var focused: Bool
 
     var body: some View {

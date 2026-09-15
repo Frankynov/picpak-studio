@@ -9,7 +9,7 @@ struct LeftSidebar: View {
             Divider()
             LayersPanel()
         }
-        .frame(minWidth: 210, idealWidth: 230)
+        .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 320)
     }
 }
 
@@ -115,11 +115,11 @@ struct ToolStrip: View {
 
 struct LayersPanel: View {
     @EnvironmentObject var store: Store
-    @State private var renaming: UUID?
-    @State private var draggingIDs: Set<UUID> = []
+    @ViewState private var renaming: UUID?
+    @ViewState private var draggingIDs: Set<UUID> = []
     /// A drop can reach us as either a move or an insert depending on how SwiftUI
     /// routes it; whichever arrives first handles it and the other becomes a no-op.
-    @State private var dropHandled = false
+    @ViewState private var dropHandled = false
 
     /// The list reads top-down, so it shows the draw order reversed.
     private var ordered: [Element] { store.doc.elements.reversed() }
@@ -201,7 +201,7 @@ private struct LayerRow: View {
     let element: Element
     @Binding var renaming: UUID?
     @FocusState private var nameFocused: Bool
-    @State private var hovering = false
+    @ViewState private var hovering = false
 
     var body: some View {
         HStack(spacing: 7) {

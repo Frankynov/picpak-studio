@@ -1,18 +1,58 @@
 import SwiftUI
 import AppKit
 
+/// The canvas area: AppKit's magnifying scroll view hosting the SwiftUI board, with
+/// pixel rulers pinned along its top and left edges.
+///
+/// Takes the store directly rather than observing it, so a drag or an edit never
+/// re-renders this wrapper. It listens for exactly one setting — whether rulers show.
+/// The viewport is held in view state, which keeps one instance without observing it:
+/// only the rulers observe it, so a pan redraws two strips, not the board.
 struct CanvasEditor: View {
+    let store: Store
+    @ViewState private var viewport = CanvasViewport()
+    @ViewState private var showRulers: Bool
+
+    init(store: Store) {
+        self.store = store
+        _showRulers = ViewState(initialValue: store.showRulers)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if showRulers {
+                HStack(spacing: 0) {
+                    RulerCorner()
+                    ViewportRuler(viewport: viewport, horizontal: true)
+                }
+            }
+            HStack(spacing: 0) {
+                if showRulers {
+                    ViewportRuler(viewport: viewport, horizontal: false)
+                }
+                CanvasScrollView(store: store, viewport: viewport,
+                                 content: CanvasBoard(viewport: viewport).environmentObject(store))
+            }
+        }
+        // Stop the artboard drawing up underneath the toolbar while it scrolls.
+        .clipped()
+        .onReceive(store.$showRulers) { showRulers = $0 }
+    }
+}
+
+/// Everything inside the scroll view: artboard, selection, handles, gestures.
+struct CanvasBoard: View {
     @EnvironmentObject var store: Store
-    @State private var session: DragSession?
+    /// Written to, never observed: the board tells the rulers what is selected.
+    let viewport: CanvasViewport
+    @ViewState private var session: DragSession?
     /// Live values for whatever is being dragged. The store is only written once,
     /// on mouse-up, so a drag never re-renders the layers panel or the inspector.
-    @State private var draft: [UUID: Element] = [:]
-    @State private var guides: [SnapGuide] = []
-    @State private var marquee: CGRect?
-    @State private var hoverID: UUID?
-    @State private var editingText: UUID?
-    @StateObject private var canvasZoom = CanvasZoom()
-    @State private var pinchBase: Double?
+    @ViewState private var draft: [UUID: Element] = [:]
+    @ViewState private var guides: [SnapGuide] = []
+    @ViewState private var marquee: CGRect?
+    @ViewState private var hoverID: UUID?
+    @ViewState private var editingText: UUID?
     @FocusState private var canvasFocused: Bool
     @FocusState private var textFieldFocused: Bool
 
@@ -34,48 +74,26 @@ struct CanvasEditor: View {
 
     var body: some View {
         Perf.tick("canvas")
-        return ScrollView([.horizontal, .vertical]) {
-            boardWithRulers
-                .padding(40)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(ScrollViewFinder(zoom: canvasZoom))
-        }
-        .background(BoardBackdrop())
-        .gesture(pinchGesture)
-        .onAppear { canvasZoom.start(store: store) }
-        .onDisappear { canvasZoom.stop() }
-        .focusable()
+        let size = CanvasZoom.documentSize(canvas: canvas.size, zoom: zoom)
+        return board
+            // Measured in panel pixels, so the whole document is a pure scale of the
+            // artboard — which is what makes ending a pinch land exactly.
+            .padding(CanvasZoom.margin * zoom)
+            // Exactly the document size the scroll view was given, laid out from the
+            // top-left, so AppKit's coordinates and SwiftUI's agree.
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+            .focusable()
         .focused($canvasFocused)
         .focusEffectDisabled()
         .onAppear { canvasFocused = true }
         .onKeyPress { press in handleKey(press) }
+        .onChange(of: liveBounds, initial: true) { _, bounds in viewport.highlight = bounds }
         .onChange(of: store.selection) { _, new in
             if let editing = editingText, !new.contains(editing) { editingText = nil }
         }
     }
 
     // MARK: - Board
-
-    /// Rulers sit flush against the artboard and share its scale, so a number on the
-    /// ruler is the same panel pixel the exporter will write.
-    private var boardWithRulers: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if store.showRulers {
-                HStack(spacing: 0) {
-                    RulerCorner()
-                    RulerStrip(horizontal: true, canvas: canvas, zoom: zoom,
-                               highlight: liveBounds.map { Double($0.minX)...Double($0.maxX) })
-                }
-            }
-            HStack(alignment: .top, spacing: 0) {
-                if store.showRulers {
-                    RulerStrip(horizontal: false, canvas: canvas, zoom: zoom,
-                               highlight: liveBounds.map { Double($0.minY)...Double($0.maxY) })
-                }
-                board
-            }
-        }
-    }
 
     private var board: some View {
         ZStack(alignment: .topLeading) {
@@ -228,22 +246,6 @@ struct CanvasEditor: View {
             .onSubmit { editingText = nil; canvasFocused = true }
             .onExitCommand { editingText = nil; canvasFocused = true }
             .onAppear { store.begin() }
-    }
-
-    // MARK: - Pinch to zoom
-
-    /// `magnification` is cumulative from the start of the pinch, so the zoom is
-    /// always computed from the level the gesture began at rather than compounding.
-    private var pinchGesture: some Gesture {
-        MagnifyGesture(minimumScaleDelta: 0.004)
-            .onChanged { value in
-                let base = pinchBase ?? store.zoom
-                if pinchBase == nil { pinchBase = base }
-                canvasZoom.apply(base * value.magnification,
-                                 anchorInWindow: canvasZoom.pointerInWindow,
-                                 store: store)
-            }
-            .onEnded { _ in pinchBase = nil }
     }
 
     // MARK: - Dragging
@@ -461,12 +463,6 @@ struct CanvasEditor: View {
 
 // MARK: - Decoration
 
-private struct BoardBackdrop: View {
-    var body: some View {
-        Color(nsColor: .underPageBackgroundColor)
-    }
-}
-
 private struct GridOverlay: View {
     let canvas: CanvasSpec
     let zoom: Double
@@ -522,7 +518,7 @@ private struct SizeReadout: View {
 /// debounce: the preview settles a moment after you stop moving things.
 private struct PanelPreviewOverlay: View {
     @EnvironmentObject var store: Store
-    @State private var image: CGImage?
+    @ViewState private var image: CGImage?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -573,45 +569,55 @@ private struct CanvasContextMenu: View {
 
 // MARK: - Rulers
 
-/// Pixel scale down the top and left of the artboard, with the selection's extent
-/// shaded so you can read straight off it how far a shape reaches.
-struct RulerStrip: View {
+/// A pixel scale pinned along the top or left of the canvas area. It follows the
+/// artboard as you scroll and pinch — live, mid-gesture — instead of scrolling away with
+/// it, and shades the selection's extent so you can read off how far a shape reaches.
+struct ViewportRuler: View {
+    @ObservedObject var viewport: CanvasViewport
     let horizontal: Bool
-    let canvas: CanvasSpec
-    let zoom: Double
-    var highlight: ClosedRange<Double>?
-
-    static let thickness: Double = 18
-
-    private var length: Double { (horizontal ? canvas.w : canvas.h) * zoom }
-    private var span: Double { horizontal ? canvas.w : canvas.h }
-
-    /// Keep labels roughly 40pt apart whatever the zoom.
-    private var majorStep: Double {
-        for candidate in [10.0, 25, 50, 100, 200] where candidate * zoom >= 40 { return candidate }
-        return 200
-    }
 
     var body: some View {
-        Canvas { context, size in
-            let thickness = horizontal ? size.height : size.width
+        let zoom = viewport.zoom
+        let magnification = viewport.magnification
+        let origin = Double(horizontal ? viewport.origin.x : viewport.origin.y)
+        let span = Double(horizontal ? viewport.canvasSize.width : viewport.canvasSize.height)
+        let highlight = viewport.highlight.map { horizontal ? ($0.minX, $0.maxX) : ($0.minY, $0.maxY) }
 
-            if let highlight {
-                let from = highlight.lowerBound * zoom
-                let to = highlight.upperBound * zoom
-                let band = horizontal
-                    ? CGRect(x: from, y: 0, width: max(to - from, 1), height: thickness)
-                    : CGRect(x: 0, y: from, width: thickness, height: max(to - from, 1))
-                context.fill(Path(band), with: .color(.accentColor.opacity(0.28)))
+        return Canvas { context, size in
+            let thickness = horizontal ? size.height : size.width
+            let length = horizontal ? size.width : size.height
+            func at(_ value: Double) -> Double {
+                CanvasZoom.rulerPosition(value: value, zoom: zoom, magnification: magnification, origin: origin)
+            }
+            func strip(_ from: Double, _ to: Double) -> CGRect {
+                horizontal ? CGRect(x: from, y: 0, width: to - from, height: thickness)
+                           : CGRect(x: 0, y: from, width: thickness, height: to - from)
             }
 
+            // The panel's own extent reads lighter, so the scale belongs to the artboard.
+            let panelStart = max(at(0), 0), panelEnd = min(at(span), length)
+            if panelEnd > panelStart {
+                context.fill(Path(strip(panelStart, panelEnd)), with: .color(Color(nsColor: .textBackgroundColor)))
+            }
+            if let (low, high) = highlight {
+                let from = max(at(Double(low)), 0), to = min(at(Double(high)), length)
+                if to >= from {
+                    context.fill(Path(strip(from, max(to, from + 1))), with: .color(.accentColor.opacity(0.28)))
+                }
+            }
+
+            let major = CanvasZoom.rulerStep(pointsPerPixel: zoom * magnification)
+            let minor = major / 5
+            let firstVisible = CanvasZoom.rulerValue(position: 0, zoom: zoom, magnification: magnification, origin: origin)
+            let lastVisible = CanvasZoom.rulerValue(position: length, zoom: zoom, magnification: magnification, origin: origin)
+            var value = max(0, (firstVisible / minor).rounded(.down) * minor)
+            let end = min(span, lastVisible)
+
             var ticks = Path()
-            let minor = majorStep / 5
-            var value = 0.0
-            while value <= span + 0.01 {
-                let isMajor = abs(value.truncatingRemainder(dividingBy: majorStep)) < 0.01
+            while value <= end + 0.01 {
+                let isMajor = abs(value.truncatingRemainder(dividingBy: major)) < 0.01
                 let depth = isMajor ? thickness * 0.55 : thickness * 0.28
-                let position = value * zoom
+                let position = at(value)
                 if horizontal {
                     ticks.move(to: CGPoint(x: position, y: thickness))
                     ticks.addLine(to: CGPoint(x: position, y: thickness - depth))
@@ -623,17 +629,15 @@ struct RulerStrip: View {
                     let label = Text("\(Int(value))")
                         .font(.system(size: 8, design: .monospaced))
                         .foregroundStyle(.secondary)
+                    // The last label would hang off the panel's end; tuck it back inside.
+                    let atEnd = value >= span - 0.01
                     if horizontal {
-                        // The last label would hang off the end; tuck it back inside.
-                        let atEnd = value >= span - 0.01
                         context.draw(label,
                                      at: CGPoint(x: atEnd ? position - 2 : position + 2, y: 1),
                                      anchor: atEnd ? .topTrailing : .topLeading)
                     } else {
-                        let atEnd = value >= span - 0.01
                         context.draw(label,
-                                     at: CGPoint(x: thickness / 2 - 1,
-                                                 y: atEnd ? position - 1 : position + 1),
+                                     at: CGPoint(x: thickness / 2 - 1, y: atEnd ? position - 1 : position + 1),
                                      anchor: atEnd ? .bottom : .top)
                     }
                 }
@@ -651,8 +655,8 @@ struct RulerStrip: View {
             }
             context.stroke(edge, with: .color(.secondary.opacity(0.5)), lineWidth: 0.5)
         }
-        .frame(width: horizontal ? length : RulerStrip.thickness,
-               height: horizontal ? RulerStrip.thickness : length)
+        .frame(width: horizontal ? nil : CanvasZoom.rulerThickness,
+               height: horizontal ? CanvasZoom.rulerThickness : nil)
         .background(Color(nsColor: .controlBackgroundColor))
         .allowsHitTesting(false)
     }
@@ -663,7 +667,7 @@ struct RulerCorner: View {
         Text("px")
             .font(.system(size: 8, design: .monospaced))
             .foregroundStyle(.secondary)
-            .frame(width: RulerStrip.thickness, height: RulerStrip.thickness)
+            .frame(width: CanvasZoom.rulerThickness, height: CanvasZoom.rulerThickness)
             .background(Color(nsColor: .controlBackgroundColor))
     }
 }

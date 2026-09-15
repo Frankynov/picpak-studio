@@ -208,27 +208,151 @@ func run() {
     check("a zero delta is consumed without changing the zoom",
           routes(precise: false, cmd: false, delta: 0) == 1)
 
-    // Pointer-anchored zoom: whatever sits under the cursor should stay under it.
-    let anchored = CanvasZoom.anchoredOrigin(
-        cursorInContent: CGPoint(x: 400, y: 300),
-        contentBefore: CGSize(width: 800, height: 600),
-        contentAfter: CGSize(width: 1600, height: 1200),
-        visibleOrigin: CGPoint(x: 100, y: 50),
-        viewport: CGSize(width: 500, height: 400))
-    // The cursor sat 300pt into the viewport horizontally and 250pt down. After
-    // doubling, that content point is at (800, 600), so the origin has to be
-    // (800-300, 600-250) for it to stay under the cursor.
-    check("zoom keeps the point under the cursor fixed",
-          anchored == CGPoint(x: 500, y: 350), "\(anchored)")
+    // Folding a live pinch into the zoom must leave every artboard point exactly where
+    // it was on screen — otherwise the canvas visibly jumps as the fingers lift. That
+    // includes pinching while scrolled hard against an edge: the new origin has to stay
+    // inside the scrollable range, or the clip view clamps it and the canvas snaps.
+    let boardSize = CGSize(width: 400, height: 300)
+    let viewportSize = CGSize(width: 700, height: 500)
+    func screenPosition(_ point: CGPoint, zoom: Double, magnification: Double, origin: CGPoint) -> CGPoint {
+        CGPoint(x: ((Double(point.x) + CanvasZoom.margin) * zoom - Double(origin.x)) * magnification,
+                y: ((Double(point.y) + CanvasZoom.margin) * zoom - Double(origin.y)) * magnification)
+    }
+    func scrollRange(zoom: Double, magnification: Double) -> CGSize {
+        let doc = CanvasZoom.documentSize(canvas: boardSize, zoom: zoom)
+        return CGSize(width: max(Double(doc.width) - Double(viewportSize.width) / magnification, 0),
+                      height: max(Double(doc.height) - Double(viewportSize.height) / magnification, 0))
+    }
+    var bakeDrift = 0.0
+    var leftRange = false
+    for (zoom, m) in [(2.0, 1.5), (3.0, 2.25), (4.0, 0.6), (6.0, 1.9)] {
+        let range = scrollRange(zoom: zoom, magnification: m)
+        // Scrolled to the top-left edge, the middle, and the bottom-right edge.
+        for origin in [CGPoint.zero,
+                       CGPoint(x: range.width / 2, y: range.height / 2),
+                       CGPoint(x: range.width, y: range.height)] {
+            let baked = CanvasZoom.bakedOrigin(origin: origin, magnification: m)
+            let after = scrollRange(zoom: zoom * m, magnification: 1)
+            if Double(baked.x) < -1e-9 || Double(baked.y) < -1e-9
+                || Double(baked.x) > Double(after.width) + 1e-9 || Double(baked.y) > Double(after.height) + 1e-9 {
+                leftRange = true
+            }
+            for point in [CGPoint.zero, CGPoint(x: 120, y: 80), CGPoint(x: 400, y: 300)] {
+                let a = screenPosition(point, zoom: zoom, magnification: m, origin: origin)
+                let b = screenPosition(point, zoom: zoom * m, magnification: 1, origin: baked)
+                bakeDrift = max(bakeDrift, abs(Double(a.x - b.x)), abs(Double(a.y - b.y)))
+            }
+        }
+    }
+    check("ending a pinch leaves the artboard exactly where it was", bakeDrift < 1e-9,
+          "max drift \(bakeDrift) pt")
+    check("ending a pinch against an edge stays inside the scrollable range", !leftRange)
+    check("a magnification of 1 changes nothing",
+          CanvasZoom.bakedOrigin(origin: CGPoint(x: 37, y: 12), magnification: 1) == CGPoint(x: 37, y: 12))
 
-    let clampedOrigin = CanvasZoom.anchoredOrigin(
-        cursorInContent: .zero,
-        contentBefore: CGSize(width: 800, height: 600),
-        contentAfter: CGSize(width: 200, height: 150),
-        visibleOrigin: CGPoint(x: 0, y: 0),
-        viewport: CGSize(width: 500, height: 400))
-    check("content smaller than the viewport pins to the origin",
-          clampedOrigin == .zero, "\(clampedOrigin)")
+    let doc2 = CanvasZoom.documentSize(canvas: boardSize, zoom: 2)
+    check("the document is a pure scale of the artboard and its margin",
+          doc2 == CGSize(width: (400 + 2 * CanvasZoom.margin) * 2, height: (300 + 2 * CanvasZoom.margin) * 2))
+
+    // A toolbar zoom keeps whatever was at the centre of the view at the centre.
+    let visibleRect = CGRect(x: 100, y: 50, width: 500, height: 400)
+    let recentred = CanvasZoom.recentredOrigin(visible: visibleRect, oldZoom: 2, newZoom: 3)
+    let centreBefore = CGPoint(x: Double(visibleRect.midX) / 2, y: Double(visibleRect.midY) / 2)
+    let centreAfter = CGPoint(x: (Double(recentred.x) + 250) / 3, y: (Double(recentred.y) + 200) / 3)
+    check("toolbar zoom keeps the centre of the view in place",
+          abs(Double(centreBefore.x - centreAfter.x)) < 1e-9 && abs(Double(centreBefore.y - centreAfter.y)) < 1e-9,
+          "\(centreBefore) vs \(centreAfter)")
+
+    // The pinned rulers must line up with the artboard under any zoom, pinch or scroll.
+    var rulerError = 0.0
+    for (zoom, m, origin) in [(2.0, 1.0, 0.0), (3.0, 1.7, 215.0), (0.5, 0.8, -40.0)] {
+        for value in [0.0, 50, 400] {
+            let position = CanvasZoom.rulerPosition(value: value, zoom: zoom, magnification: m, origin: origin)
+            let screen = screenPosition(CGPoint(x: value, y: 0), zoom: zoom, magnification: m,
+                                        origin: CGPoint(x: origin, y: 0))
+            rulerError = max(rulerError, abs(position - Double(screen.x)))
+            let back = CanvasZoom.rulerValue(position: position, zoom: zoom, magnification: m, origin: origin)
+            rulerError = max(rulerError, abs(back - value))
+        }
+    }
+    check("ruler ticks sit exactly over the artboard pixels they label", rulerError < 1e-9,
+          "max error \(rulerError)")
+    check("ruler labels stay readable when zoomed right out",
+          CanvasZoom.rulerStep(pointsPerPixel: 0.25) * 0.25 >= 40 || CanvasZoom.rulerStep(pointsPerPixel: 0.25) == 200)
+    check("ruler labels get finer when zoomed right in", CanvasZoom.rulerStep(pointsPerPixel: 12) == 5)
+
+    // Wheel zoom anchors by hand: the document point under the pointer keeps its place in
+    // the viewport across the magnification change.
+    var anchorDrift = 0.0
+    for (m0, m1, origin, point) in [(1.0, 1.15, CGPoint(x: 120, y: 40), CGPoint(x: 300, y: 260)),
+                                    (1.7, 2.3, CGPoint(x: -35, y: 10), CGPoint(x: 90, y: 400)),
+                                    (0.8, 0.5, CGPoint(x: 600, y: 300), CGPoint(x: 900, y: 500))] {
+        let offset = CGPoint(x: (Double(point.x) - Double(origin.x)) * m0,
+                             y: (Double(point.y) - Double(origin.y)) * m0)
+        let moved = CanvasZoom.anchoredOrigin(point: point, offset: offset, magnification: m1)
+        let after = CGPoint(x: (Double(point.x) - Double(moved.x)) * m1,
+                            y: (Double(point.y) - Double(moved.y)) * m1)
+        anchorDrift = max(anchorDrift, abs(Double(after.x - offset.x)), abs(Double(after.y - offset.y)))
+    }
+    check("wheel zoom keeps the point under the pointer in place", anchorDrift < 1e-9,
+          "max drift \(anchorDrift) pt")
+
+    // Resting limits: a small document rests centred, a large one fills the view.
+    check("a document smaller than the view rests centred",
+          CanvasZoom.restingOrigin(123, document: 680, visible: 777) == -48.5)
+    check("a document larger than the view rests inside its range",
+          CanvasZoom.restingOrigin(-16, document: 880, visible: 792) == 0
+            && CanvasZoom.restingOrigin(500, document: 880, visible: 792) == 88)
+
+    // The case that jumped: at 200 % the artboard fits vertically, and zooming in on its
+    // upper part makes it taller than the view. Free to overshoot mid-zoom, the pixel under
+    // the pointer stays exactly put; only afterwards does the view glide back into range.
+    do {
+        let doc = CanvasZoom.documentSize(canvas: CGSize(width: 400, height: 300), zoom: 2)
+        let view = CGSize(width: 792, height: 777)
+        let point = CGPoint(x: (300 + CanvasZoom.margin) * 2, y: (80 + CanvasZoom.margin) * 2)
+        var m = 1.0
+        var origin = CGPoint(x: 44, y: CanvasZoom.restingOrigin(0, document: Double(doc.height),
+                                                             visible: Double(view.height)))
+        let start = CGPoint(x: (Double(point.x) - Double(origin.x)) * m, y: (Double(point.y) - Double(origin.y)) * m)
+        for _ in 0..<4 {
+            let offset = CGPoint(x: (Double(point.x) - Double(origin.x)) * m, y: (Double(point.y) - Double(origin.y)) * m)
+            m *= 1.15
+            origin = CanvasZoom.anchoredOrigin(point: point, offset: offset, magnification: m)
+        }
+        let end = CGPoint(x: (Double(point.x) - Double(origin.x)) * m, y: (Double(point.y) - Double(origin.y)) * m)
+        let drift = hypot(Double(end.x - start.x), Double(end.y - start.y))
+        check("zooming in on a centred artboard keeps the pointer's pixel still", drift < 1e-9,
+              "\(drift) pt")
+    }
+
+    // AppKit aborts on a non-finite scroll rectangle ("Invalid view geometry: x is NaN"),
+    // so the clip view must never pass one on — and outside the zoom code's own synchronous
+    // overshoot scope, every position is pulled back inside the limits.
+    do {
+        let clipView = CenteringClipView(frame: NSRect(x: 0, y: 0, width: 300, height: 200))
+        clipView.documentView = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        let bad = clipView.constrainBoundsRect(NSRect(x: CGFloat.nan, y: 10, width: 300, height: 200))
+        check("a NaN scroll position never gets through the clip view",
+              bad.origin.x.isFinite && bad.origin.y.isFinite && bad.width.isFinite, "\(bad)")
+        // AppKit finds the ends of the scrollable range by proposing ±infinity; answering
+        // with the current position made panning towards the start stick after a few points.
+        clipView.setBoundsOrigin(NSPoint(x: 250, y: 200))
+        let start = clipView.constrainBoundsRect(NSRect(x: -CGFloat.infinity, y: -CGFloat.infinity, width: 300, height: 200))
+        let end = clipView.constrainBoundsRect(NSRect(x: CGFloat.infinity, y: CGFloat.infinity, width: 300, height: 200))
+        clipView.setBoundsOrigin(.zero)
+        check("proposing -infinity finds the start of the scrollable range, wherever the view is",
+              start.origin == .zero, "\(start.origin)")
+        check("proposing +infinity finds the end of the scrollable range",
+              end.origin == CGPoint(x: 500, y: 400), "\(end.origin)")
+        let far = clipView.constrainBoundsRect(NSRect(x: -500, y: 9000, width: 300, height: 200))
+        check("scroll positions are pulled back inside the limits", far.origin.x == 0 && far.origin.y == 400, "\(far)")
+        var inside = NSRect.zero
+        clipView.overshooting { inside = clipView.constrainBoundsRect(NSRect(x: -500, y: 9000, width: 300, height: 200)) }
+        let after = clipView.constrainBoundsRect(NSRect(x: -500, y: 9000, width: 300, height: 200))
+        check("overshoot is allowed only inside the synchronous scope",
+              inside.origin.x == -500 && after.origin.x == 0, "inside \(inside), after \(after)")
+    }
 
     // A fresh install has no server configured; that has to be a quiet no-op, not a crash.
     check("blank address yields no client", TesseraeSettings.normalizedURL("") == nil)

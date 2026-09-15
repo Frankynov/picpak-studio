@@ -107,18 +107,59 @@ struct ElementView: View, Equatable {
 
     // MARK: - Text
 
+    /// At 1× — the export — this is plain SwiftUI text. Zoomed, the same text is laid out at
+    /// 1× too and drawn through a scaled context. Setting the type at the zoomed point size
+    /// re-flowed it instead (small sizes run wider, so at 50 % "SALE" wrapped to "SAL / E"),
+    /// and scaling the finished view blurred it at high zoom.
+    @ViewBuilder
     private var textView: some View {
+        if scale == 1 {
+            styledText
+                .lineSpacing(element.lineSpacing)
+                .multilineTextAlignment(element.align.swiftUI)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: max(w, 0.01), alignment: element.align.frameAlignment)
+                .frame(height: max(h, 0.01), alignment: element.vAlign.frameAlignment)
+        } else {
+            let e = element
+            let s = scale
+            let text = styledText
+            let size = TextFit.fittedSize(e)
+            // A Canvas clips to its frame: leave room for type overflowing its box, as it may.
+            let padX = size * 0.5
+            let padY = max(0, TextFit.measure(e, size: size, width: e.w).height - e.h) + size * 0.5
+            Canvas { context, _ in
+                let resolved = context.resolve(text)
+                let measured = resolved.measure(in: CGSize(width: max(e.w, 0.01), height: .greatestFiniteMagnitude))
+                let x: Double = switch e.align {
+                case .leading: 0
+                case .center: (e.w - measured.width) / 2
+                case .trailing: e.w - measured.width
+                }
+                let y: Double = switch e.vAlign {
+                case .top: 0
+                case .middle: (e.h - measured.height) / 2
+                case .bottom: e.h - measured.height
+                }
+                context.translateBy(x: padX * s, y: padY * s)
+                context.scaleBy(x: s, y: s)
+                context.draw(resolved, in: CGRect(x: x, y: y, width: measured.width, height: measured.height))
+            }
+            .environment(\.multilineTextAlignment, e.align.swiftUI)
+            .lineSpacing(e.lineSpacing)
+            .frame(width: (e.w + 2 * padX) * s, height: (e.h + 2 * padY) * s)
+            .frame(width: max(w, 0.01), height: max(h, 0.01))
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var styledText: Text {
         Text(TextFit.displayString(element))
-            .font(FontResolver.font(element, size: TextFit.fittedSize(element) * scale))
-            .tracking(element.tracking * scale)
-            .lineSpacing(element.lineSpacing * scale)
-            .multilineTextAlignment(element.align.swiftUI)
+            .font(FontResolver.font(element, size: TextFit.fittedSize(element)))
+            .tracking(element.tracking)
             .foregroundStyle((element.fill ?? .black).color)
             .strikethrough(element.strikethrough,
                            color: (element.strikeColor ?? element.fill ?? .black).color)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(width: max(w, 0.01), alignment: element.align.frameAlignment)
-            .frame(height: max(h, 0.01), alignment: element.vAlign.frameAlignment)
     }
 
     // MARK: - Symbols

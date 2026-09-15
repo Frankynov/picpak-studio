@@ -3,8 +3,8 @@ import AppKit
 
 struct Inspector: View {
     @EnvironmentObject var store: Store
-    @State private var showSymbolPicker = false
-    @State private var showFontPicker = false
+    @ViewState private var showSymbolPicker = false
+    @ViewState private var showFontPicker = false
 
     var body: some View {
         Perf.tick("inspector")
@@ -465,8 +465,8 @@ struct Inspector: View {
 /// How much of the panel each ink covers — a fast reality check before pushing.
 private struct GamutMeter: View {
     @EnvironmentObject var store: Store
-    @State private var counts: [PPColor: Int] = [:]
-    @State private var total: Int = 1
+    @ViewState private var counts: [PPColor: Int] = [:]
+    @ViewState private var total: Int = 1
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {

@@ -61,7 +61,7 @@ private struct GeneralSettingsPane: View {
 
 private struct TesseraeSettingsPane: View {
     @StateObject private var settings = TesseraeSettings.shared
-    @State private var probe: Probe = .idle
+    @ViewState private var probe: Probe = .idle
 
     private enum Probe: Equatable {
         case idle, checking, ok(Int), failed(String)

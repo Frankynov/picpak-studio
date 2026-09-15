@@ -124,9 +124,9 @@ enum SymbolCatalog {
 struct SymbolPicker: View {
     @Binding var selection: String
     @Environment(\.dismiss) private var dismiss
-    @State private var query = ""
-    @State private var category = "all"
-    @State private var results: [String] = []
+    @ViewState private var query = ""
+    @ViewState private var category = "all"
+    @ViewState private var results: [String] = []
 
     private let columns = [GridItem(.adaptive(minimum: 76, maximum: 76), spacing: 8)]
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -231,7 +231,7 @@ struct SymbolPicker: View {
 struct FontPicker: View {
     @Binding var selection: String        // "" means the system face
     @Environment(\.dismiss) private var dismiss
-    @State private var query = ""
+    @ViewState private var query = ""
 
     private var matches: [String] {
         let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
